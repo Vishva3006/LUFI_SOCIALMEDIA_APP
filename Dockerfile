@@ -1,7 +1,10 @@
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 
-# Install build dependencies for native modules (e.g. better-sqlite3)
-RUN apk add --no-cache python3 py3-setuptools make g++
+# Install build dependencies for native modules (better-sqlite3)
+# Debian Bookworm uses Python 3.11 which still has distutils built-in
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-setuptools make g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
