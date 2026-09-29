@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>(function(){const t=localStorage.getItem("loop_theme")||(window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);})();</script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <title>Messages — Lufi</title>
+</head>
+<body class="messages-page">
+<header id="topbar" class="topbar"></header>
+
+<div class="chat-container shell">
+  <!-- Left Column: Conversations List -->
+  <aside class="chat-sidebar card" id="chat-sidebar">
+    <div class="chat-sidebar-header">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <h2 style="margin:0;font-size:1.25rem">Direct Messages</h2>
+        <button class="btn btn-primary btn-sm icon-btn" id="new-msg-btn" type="button" title="New Message">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+          <span>New</span>
+        </button>
+      </div>
+      <div class="chat-search-wrap">
+        <input type="text" id="conv-search" class="chat-search-input" placeholder="Search conversations..." aria-label="Search conversations" />
+      </div>
+    </div>
+    
+    <div class="conv-list" id="conv-list">
+      <div class="empty">Loading conversations…</div>
+    </div>
+  </aside>
+
+  <!-- Right Column: Active Chat Area -->
+  <main class="chat-main card" id="chat-main">
+    <!-- Active Chat View -->
+    <div id="chat-active" hidden>
+      <div class="chat-header">
+        <button class="chat-back-btn" id="chat-back-btn" type="button" aria-label="Back to conversations">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="chat-partner-info" id="chat-partner-info">
+          <!-- Filled dynamically -->
+        </div>
+      </div>
+
+      <div class="chat-stream" id="chat-stream">
+        <!-- Messages loaded here -->
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-box">
+          <textarea id="chat-input" placeholder="Message..." rows="1" maxlength="2000" aria-label="Type message"></textarea>
+          <button class="btn btn-primary btn-sm chat-send-btn" id="chat-send-btn" type="button" disabled>Send</button>
+        </div>
+        <div class="chat-input-foot">
+          <span class="chat-char-counter" id="chat-char-counter">2000</span>
+          <span class="chat-hint">Press Enter to send, Shift+Enter for new line</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty Placeholder View -->
+    <div id="chat-empty-state" class="chat-empty-state">
+      <div class="chat-empty-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      </div>
+      <h2>Your Messages</h2>
+      <p>Send private messages to anyone on Lufi.</p>
+      <button class="btn btn-primary" id="start-msg-btn" type="button">Send Message</button>
+    </div>
+  </main>
+</div>
+
+<!-- New Message Modal -->
+<div class="modal-backdrop" id="modal-backdrop" hidden style="display:none">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>New Message</h3>
+      <button class="modal-close" id="modal-close" type="button" aria-label="Close modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-search-field">
+        <label for="user-search-input">To:</label>
+        <input type="text" id="user-search-input" placeholder="Search by name or @username..." autocomplete="off" />
+      </div>
+      <div class="user-search-results" id="user-search-results">
+        <div class="empty" style="padding:24px 10px">Type to find people to message.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+(async () => {
+  const me = await initHeader();
+  if (!me) return goLogin();
+
+  const queryUser = new URLSearchParams(location.search).get("u");
+  let activeUsername = queryUser ? queryUser.toLowerCase() : null;
+  let conversations = [];
+  let currentMessages = [];
+  let pollTimer = null;
+  let isSending = false;
+
+  const convListEl = document.getElementById("conv-list");
+  const chatSidebar = document.getElementById("chat-sidebar");
+  const chatMain = document.getElementById("chat-main");
+  const chatActive = document.getElementById("chat-active");
+  const chatEmptyState = document.getElementById("chat-empty-state");
+  const chatStream = document.getElementById("chat-stream");
+  const chatInput = document.getElementById("chat-input");
+  const chatSendBtn = document.getElementById("chat-send-btn");
+  const chatCounter = document.getElementById("chat-char-counter");
+  const partnerInfoEl = document.getElementById("chat-partner-info");
+  const modalBackdrop = document.getElementById("modal-backdrop");
+  const userSearchInput = document.getElementById("user-search-input");
+  const userSearchResults = document.getElementById("user-search-results");
+
+  // Load conversations list
+  async function loadConversations() {
+    try {
+      conversations = await api("/messages/conversations");
+      renderConversations();
+      updateNavBadge();
+    } catch (e) {
+      convListEl.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    }
+  }
+
+  function renderConversations() {
+    const filter = (document.getElementById("conv-search").value || "").trim().toLowerCase();
+    const filtered = filter 
+      ? conversations.filter(c => c.username.toLowerCase().includes(filter) || c.display_name.toLowerCase().includes(filter))
+      : conversations;
+
+    if (!filtered.length) {
+      convListEl.innerHTML = filter 
+        ? '<div class="empty">No matching conversations.</div>' 
+        : '<div class="empty">No messages yet. Start a conversation!</div>';
+      return;
+    }
+
+    convListEl.innerHTML = filtered.map(c => {
+      const isActive = activeUsername && c.username.toLowerCase() === activeUsername.toLowerCase();
+      const isMine = c.last_sender_id === me.id;
+      const snippet = isMine ? `You: ${c.last_message}` : c.last_message;
+      const unreadBadge = c.unread_count > 0 
+        ? `<span class="conv-unread-dot" title="${c.unread_count} unread">${c.unread_count}</span>` 
+        : "";
+
+      return `
+        <div class="conv-item ${isActive ? "active" : ""} ${c.unread_count > 0 ? "has-unread" : ""}" data-username="${esc(c.username)}">
+          ${avatar(c, "sm")}
+          <div class="conv-info">
+            <div class="conv-top">
+              <span class="conv-name">${esc(c.display_name)}</span>
+              <span class="conv-time">${timeAgo(c.last_message_time)}</span>
+            </div>
+            <div class="conv-bottom">
+              <span class="conv-snippet">${esc(snippet)}</span>
+              ${unreadBadge}
+            </div>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  async function updateNavBadge() {
+    try {
+      const { unread_count } = await api("/messages/unread-count");
+      const badge = document.getElementById("nav-unread-badge");
+      if (badge) {
+        if (unread_count > 0) {
+          badge.textContent = unread_count > 99 ? "99+" : unread_count;
+          badge.style.display = "inline-flex";
+        } else {
+          badge.style.display = "none";
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // Open a specific chat
+  async function selectChat(username, pushHistory = true) {
+    if (!username) {
+      activeUsername = null;
+      chatActive.hidden = true;
+      chatEmptyState.hidden = false;
+      document.body.classList.remove("in-chat");
+      renderConversations();
+      return;
+    }
+
+    activeUsername = username.toLowerCase();
+    if (pushHistory) {
+      history.pushState(null, "", `/messages.html?u=${encodeURIComponent(activeUsername)}`);
+    }
+
+    document.body.classList.add("in-chat");
+    chatEmptyState.hidden = true;
+    chatActive.hidden = false;
+    chatStream.innerHTML = '<div class="empty">Loading messages…</div>';
+    renderConversations();
+
+    try {
+      const data = await api(`/messages/${encodeURIComponent(activeUsername)}`);
+      renderChatThread(data);
+      // Refresh list to clear unread indicator
+      loadConversations();
+    } catch (e) {
+      chatStream.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    }
+  }
+
+  function renderChatThread(data) {
+    const { partner, messages } = data;
+    currentMessages = messages;
+
+    partnerInfoEl.innerHTML = `
+      <a href="/profile.html?u=${encodeURIComponent(partner.username)}">${avatar(partner, "sm")}</a>
+      <div class="chat-partner-text">
+        <a class="name" href="/profile.html?u=${encodeURIComponent(partner.username)}">${esc(partner.display_name)}</a>
+        <span class="handle">@${esc(partner.username)}</span>
+      </div>
+      <a class="btn btn-outline btn-sm view-profile-btn" href="/profile.html?u=${encodeURIComponent(partner.username)}">View Profile</a>
+    `;
+
+    if (!messages.length) {
+      chatStream.innerHTML = `
+        <div class="chat-intro">
+          ${avatar(partner, "lg")}
+          <h3>${esc(partner.display_name)}</h3>
+          <p class="handle">@${esc(partner.username)}</p>
+          <p style="color:var(--muted);font-size:0.9rem;margin-top:4px">No messages yet. Say hello!</p>
+        </div>`;
+      return;
+    }
+
+    let html = "";
+    messages.forEach((m) => {
+      const isMine = m.is_mine;
+      const seenStatus = isMine && m.read_at ? '<span class="msg-status">Seen</span>' : '';
+
+      html += `
+        <div class="msg-row ${isMine ? "outgoing" : "incoming"}" data-msg-id="${m.id}">
+          ${!isMine ? `<a href="/profile.html?u=${encodeURIComponent(partner.username)}">${avatar(partner, "sm")}</a>` : ""}
+          <div class="msg-content-wrap">
+            <div class="msg-bubble">
+              <div class="msg-text">${esc(m.content)}</div>
+              ${isMine ? `<button class="msg-unsend-btn" title="Unsend message" data-unsend="${m.id}" type="button">&times;</button>` : ""}
+            </div>
+            <div class="msg-meta">
+              <span class="msg-time">${timeAgo(m.created_at)}</span>
+              ${seenStatus}
+            </div>
+          </div>
+        </div>`;
+    });
+
+    chatStream.innerHTML = html;
+    scrollChatToBottom();
+  }
+
+  function scrollChatToBottom(smooth = false) {
+    chatStream.scrollTo({ top: chatStream.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  }
+
+  // Poll for new messages every 3 seconds
+  async function pollActiveChat() {
+    if (!activeUsername || isSending) return;
+    try {
+      const data = await api(`/messages/${encodeURIComponent(activeUsername)}`);
+      // If message count or latest id changed, re-render
+      const newMsgs = data.messages;
+      const hasChanged = newMsgs.length !== currentMessages.length || 
+        (newMsgs.length > 0 && newMsgs[newMsgs.length - 1].id !== (currentMessages[currentMessages.length - 1] || {}).id);
+
+      if (hasChanged) {
+        renderChatThread(data);
+        loadConversations();
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // Send message
+  async function sendMessage() {
+    const text = chatInput.value.trim();
+    if (!text || !activeUsername || isSending) return;
+
+    isSending = true;
+    chatSendBtn.disabled = true;
+
+    try {
+      const msg = await api(`/messages/${encodeURIComponent(activeUsername)}`, {
+        method: "POST",
+        body: JSON.stringify({ content: text })
+      });
+
+      chatInput.value = "";
+      autoResizeInput();
+      updateInputCounter();
+
+      // Add to current chat stream immediately
+      currentMessages.push(msg);
+      
+      const intro = chatStream.querySelector(".chat-intro");
+      if (intro) intro.remove();
+
+      const newMsgHtml = `
+        <div class="msg-row outgoing" data-msg-id="${msg.id}">
+          <div class="msg-content-wrap">
+            <div class="msg-bubble">
+              <div class="msg-text">${esc(msg.content)}</div>
+              <button class="msg-unsend-btn" title="Unsend message" data-unsend="${msg.id}" type="button">&times;</button>
+            </div>
+            <div class="msg-meta">
+              <span class="msg-time">just now</span>
+            </div>
+          </div>
+        </div>`;
+      chatStream.insertAdjacentHTML("beforeend", newMsgHtml);
+      scrollChatToBottom(true);
+      loadConversations();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      isSending = false;
+      updateInputCounter();
+    }
+  }
+
+  // Auto resize textarea
+  function autoResizeInput() {
+    chatInput.style.height = "auto";
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + "px";
+  }
+
+  function updateInputCounter() {
+    const len = chatInput.value.length;
+    chatCounter.textContent = `${2000 - len}`;
+    chatCounter.classList.toggle("over", len > 2000);
+    chatSendBtn.disabled = len === 0 || len > 2000 || !chatInput.value.trim() || isSending;
+  }
+
+  chatInput.addEventListener("input", () => {
+    autoResizeInput();
+    updateInputCounter();
+  });
+
+  chatInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  chatSendBtn.addEventListener("click", sendMessage);
+
+  // Unsend message handler
+  chatStream.addEventListener("click", async (e) => {
+    const unsendBtn = e.target.closest("[data-unsend]");
+    if (!unsendBtn) return;
+    const msgId = unsendBtn.dataset.unsend;
+    if (!confirm("Unsend this message? It will be removed for everyone.")) return;
+
+    try {
+      await api(`/messages/${msgId}`, { method: "DELETE" });
+      const row = unsendBtn.closest(".msg-row");
+      if (row) row.remove();
+      currentMessages = currentMessages.filter(m => String(m.id) !== msgId);
+      loadConversations();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  // Conversation list item click
+  convListEl.addEventListener("click", (e) => {
+    const item = e.target.closest(".conv-item");
+    if (!item) return;
+    const u = item.dataset.username;
+    selectChat(u);
+  });
+
+  // Filter conversations
+  document.getElementById("conv-search").addEventListener("input", renderConversations);
+
+  // Mobile back button
+  document.getElementById("chat-back-btn").addEventListener("click", () => {
+    selectChat(null);
+  });
+
+  // Modal handlers
+  function openModal() {
+    modalBackdrop.hidden = false;
+    modalBackdrop.style.display = "flex";
+    userSearchInput.value = "";
+    userSearchResults.innerHTML = '<div class="empty" style="padding:24px 10px">Type to find people to message.</div>';
+    setTimeout(() => userSearchInput.focus(), 50);
+  }
+
+  function closeModal() {
+    modalBackdrop.hidden = true;
+    modalBackdrop.style.display = "none";
+  }
+
+  document.getElementById("new-msg-btn").addEventListener("click", openModal);
+  document.getElementById("start-msg-btn").addEventListener("click", openModal);
+  document.getElementById("modal-close").addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeModal();
+  });
+  modalBackdrop.addEventListener("click", (e) => {
+    if (e.target === modalBackdrop) closeModal();
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !modalBackdrop.hidden) closeModal();
+  });
+
+  // User search inside modal
+  let searchTimer = null;
+  userSearchInput.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    const q = userSearchInput.value.trim();
+    if (!q) {
+      userSearchResults.innerHTML = '<div class="empty" style="padding:24px 10px">Type to find people to message.</div>';
+      return;
+    }
+    searchTimer = setTimeout(async () => {
+      userSearchResults.innerHTML = '<div class="empty">Searching…</div>';
+      try {
+        const users = await api(`/users/search?q=${encodeURIComponent(q)}`);
+        if (!users.length) {
+          userSearchResults.innerHTML = '<div class="empty">No users found.</div>';
+          return;
+        }
+        userSearchResults.innerHTML = users.map(u => `
+          <div class="user-search-item" data-username="${esc(u.username)}">
+            ${avatar(u, "sm")}
+            <div class="user-search-info">
+              <b>${esc(u.display_name)}</b>
+              <span>@${esc(u.username)}</span>
+            </div>
+            <button class="btn btn-outline btn-sm" type="button">Chat</button>
+          </div>
+        `).join("");
+      } catch (err) {
+        userSearchResults.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+      }
+    }, 250);
+  });
+
+  userSearchResults.addEventListener("click", (e) => {
+    const item = e.target.closest(".user-search-item");
+    if (!item) return;
+    const u = item.dataset.username;
+    closeModal();
+    selectChat(u);
+  });
+
+  // Initial load
+  await loadConversations();
+
+  if (activeUsername) {
+    selectChat(activeUsername, false);
+  }
+
+  // Interval polling
+  pollTimer = setInterval(() => {
+    pollActiveChat();
+    updateNavBadge();
+  }, 2500);
+
+  window.addEventListener("beforeunload", () => clearInterval(pollTimer));
+  window.addEventListener("popstate", () => {
+    const u = new URLSearchParams(location.search).get("u");
+    selectChat(u, false);
+  });
+})();
+</script>
+</body>
+</html>

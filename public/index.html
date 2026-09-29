@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>(function(){const t=localStorage.getItem("loop_theme")||(window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);})();</script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <title>Lufi — Home</title>
+</head>
+<body>
+<header id="topbar" class="topbar"></header>
+<div class="shell">
+  <main>
+    <section class="card pad" id="composer-card" hidden>
+      <div class="composer">
+        <span id="composer-avatar"></span>
+        <div style="flex:1">
+          <textarea id="composer-text" placeholder="What's looping in your head?" maxlength="400" aria-label="New post"></textarea>
+          <div class="composer-foot">
+            <span class="counter" id="composer-counter">280</span>
+            <button class="btn btn-primary" id="composer-btn" type="button">Post</button>
+          </div>
+        </div>
+      </div>
+      <div class="alert" id="composer-error" hidden style="margin:12px 0 0"></div>
+    </section>
+
+    <section class="card pad" id="welcome" hidden>
+      <h2>Short posts. Real people.</h2>
+      <p style="color:var(--muted);margin:0 0 14px">Join Lufi to post, like, comment, and follow others.</p>
+      <a class="btn btn-primary" href="/register.html">Create an account</a>
+    </section>
+
+    <div class="tabs" id="tabs" hidden>
+      <button class="tab active" data-feed="following" type="button">Following</button>
+      <button class="tab" data-feed="all" type="button">Everyone</button>
+    </div>
+    <section class="card" id="feed" style="margin-top:16px"><div class="empty">Loading…</div></section>
+  </main>
+
+  <aside class="side card" id="suggestions-card" hidden>
+    <h3>Who to follow</h3>
+    <div id="suggestions"></div>
+  </aside>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+(async () => {
+  const me = await initHeader();
+  const feedEl = document.getElementById("feed");
+  let feed = me ? "following" : "all";
+
+  async function loadFeed() {
+    feedEl.innerHTML = '<div class="empty">Loading…</div>';
+    try {
+      const posts = await api(`/posts?feed=${feed}`);
+      renderFeed(posts);
+    } catch (e) {
+      feedEl.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    }
+  }
+
+  function renderFeed(posts) {
+    if (!posts.length) {
+      feedEl.innerHTML = feed === "following"
+        ? '<div class="empty">Nothing here yet. Follow people from the sidebar, or write your first post.</div>'
+        : '<div class="empty">No posts yet.</div>';
+      return;
+    }
+    feedEl.innerHTML = posts.map((p) => postHtml(p, me)).join("");
+  }
+
+  bindPosts(feedEl, me, {
+    onDelete: () => { if (!feedEl.querySelector(".post")) renderFeed([]); },
+  });
+
+  if (me) {
+    document.getElementById("composer-card").hidden = false;
+    document.getElementById("tabs").hidden = false;
+    document.getElementById("composer-avatar").innerHTML = avatar(me);
+
+    const text = document.getElementById("composer-text");
+    const btn = document.getElementById("composer-btn");
+    const err = document.getElementById("composer-error");
+    bindCounter(text, document.getElementById("composer-counter"), btn);
+
+    btn.addEventListener("click", async () => {
+      err.hidden = true;
+      btn.disabled = true;
+      try {
+        const post = await api("/posts", { method: "POST", body: JSON.stringify({ content: text.value }) });
+        text.value = "";
+        text.dispatchEvent(new Event("input"));
+        if (!feedEl.querySelector(".post")) feedEl.innerHTML = "";
+        feedEl.insertAdjacentHTML("afterbegin", postHtml(post, me));
+      } catch (e) {
+        err.textContent = e.message;
+        err.hidden = false;
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("tabs").addEventListener("click", (e) => {
+      const tab = e.target.closest(".tab");
+      if (!tab) return;
+      document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+      feed = tab.dataset.feed;
+      loadFeed();
+    });
+  } else {
+    document.getElementById("welcome").hidden = false;
+  }
+
+  // Who to follow
+  async function loadSuggestions() {
+    const list = await api("/users/suggestions");
+    const card = document.getElementById("suggestions-card");
+    if (!list.length) { card.hidden = true; return; }
+    card.hidden = false;
+    document.getElementById("suggestions").innerHTML = list.map((u) => `
+      <div class="suggest">
+        <a href="/profile.html?u=${encodeURIComponent(u.username)}">${avatar(u, "sm")}</a>
+        <a class="who" href="/profile.html?u=${encodeURIComponent(u.username)}"><b>${esc(u.display_name)}</b><span>@${esc(u.username)}</span></a>
+        <button class="btn btn-outline btn-sm" data-follow="${esc(u.username)}" type="button">Follow</button>
+      </div>`).join("");
+  }
+
+  document.getElementById("suggestions").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-follow]");
+    if (!btn) return;
+    if (!me) return goLogin();
+    try {
+      await api(`/users/${btn.dataset.follow}/follow`, { method: "POST" });
+      btn.closest(".suggest").remove();
+      if (feed === "following") loadFeed();
+    } catch (err) { alert(err.message); }
+  });
+
+  loadFeed();
+  loadSuggestions();
+})();
+</script>
+</body></html>

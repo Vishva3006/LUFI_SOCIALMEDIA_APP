@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>(function(){const t=localStorage.getItem("loop_theme")||(window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);})();</script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <title>Profile — Lufi</title>
+</head>
+<body>
+<header id="topbar" class="topbar"></header>
+<div class="shell single">
+  <main>
+    <section class="card pad" id="profile-card"><div class="empty">Loading…</div></section>
+    <h3 style="margin:22px 4px 10px">Posts</h3>
+    <section class="card" id="posts"></section>
+  </main>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+(async () => {
+  const me = await initHeader();
+  const username = new URLSearchParams(location.search).get("u");
+  const card = document.getElementById("profile-card");
+  const postsEl = document.getElementById("posts");
+  let profile;
+
+  if (!username) { card.innerHTML = '<div class="empty">No user specified.</div>'; return; }
+
+  function render() {
+    document.title = `${profile.display_name} (@${profile.username}) — Lufi`;
+    const action = profile.is_me
+      ? '<button class="btn btn-outline btn-sm" id="edit-btn" type="button">Edit profile</button>'
+      : `<div style="display:flex;gap:8px;align-items:center">
+           <a class="btn btn-outline btn-sm" href="/messages.html?u=${encodeURIComponent(profile.username)}" style="display:inline-flex;align-items:center;gap:4px">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+             Message
+           </a>
+           <button class="btn ${profile.is_following ? "btn-outline" : "btn-primary"} btn-sm" id="follow-btn" type="button">${profile.is_following ? "Following" : "Follow"}</button>
+         </div>`;
+
+    card.innerHTML = `
+      <div class="profile-head">
+        ${avatar(profile, "lg")}
+        <div class="info">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+            <div><h1>${esc(profile.display_name)}</h1><div class="handle">@${esc(profile.username)}</div></div>
+            ${action}
+          </div>
+          <p class="bio">${profile.bio ? esc(profile.bio) : '<span style="color:var(--muted)">No bio yet.</span>'}</p>
+          <div class="stats">
+            <span><b>${profile.post_count}</b> posts</span>
+            <span><b id="follower-count">${profile.follower_count}</b> followers</span>
+            <span><b>${profile.following_count}</b> following</span>
+          </div>
+        </div>
+      </div>
+      <form id="edit-form" hidden style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px">
+        <div class="alert" id="edit-error" hidden></div>
+        <div class="field"><label for="edit-name">Name</label><input id="edit-name" maxlength="50" value="${esc(profile.display_name)}" /></div>
+        <div class="field"><label for="edit-bio">Bio</label><textarea id="edit-bio" rows="3" maxlength="160">${esc(profile.bio)}</textarea></div>
+        <button class="btn btn-primary btn-sm" type="submit">Save changes</button>
+        <button class="btn btn-outline btn-sm" type="button" id="edit-cancel">Cancel</button>
+      </form>`;
+
+    const followBtn = document.getElementById("follow-btn");
+    if (followBtn) followBtn.addEventListener("click", async () => {
+      if (!me) return goLogin();
+      try {
+        const r = await api(`/users/${profile.username}/follow`, { method: profile.is_following ? "DELETE" : "POST" });
+        profile.is_following = r.is_following;
+        profile.follower_count = r.follower_count;
+        render();
+      } catch (e) { alert(e.message); }
+    });
+
+    const editBtn = document.getElementById("edit-btn");
+    if (editBtn) {
+      const form = document.getElementById("edit-form");
+      editBtn.addEventListener("click", () => { form.hidden = !form.hidden; });
+      document.getElementById("edit-cancel").addEventListener("click", () => { form.hidden = true; });
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const r = await api("/users/me", { method: "PUT", body: JSON.stringify({
+            displayName: document.getElementById("edit-name").value,
+            bio: document.getElementById("edit-bio").value,
+          })});
+          profile.display_name = r.display_name;
+          profile.bio = r.bio;
+          render();
+        } catch (err) {
+          const box = document.getElementById("edit-error");
+          box.textContent = err.message;
+          box.hidden = false;
+        }
+      });
+    }
+  }
+
+  try {
+    profile = await api(`/users/${encodeURIComponent(username)}`);
+  } catch (e) {
+    card.innerHTML = `<div class="empty">${esc(e.message)} <br><a href="/" style="color:var(--violet);font-weight:700">Back home</a></div>`;
+    return;
+  }
+  render();
+
+  const posts = await api(`/posts?username=${encodeURIComponent(username)}`);
+  postsEl.innerHTML = posts.length ? posts.map((p) => postHtml(p, me)).join("") : '<div class="empty">No posts yet.</div>';
+  bindPosts(postsEl, me, {
+    onDelete: () => {
+      profile.post_count -= 1;
+      render();
+      if (!postsEl.querySelector(".post")) postsEl.innerHTML = '<div class="empty">No posts yet.</div>';
+    },
+  });
+})();
+</script>
+</body></html>

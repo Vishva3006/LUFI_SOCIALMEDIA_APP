@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>(function(){const t=localStorage.getItem("loop_theme")||(window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);})();</script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <title>Post — Lufi</title>
+</head>
+<body>
+<header id="topbar" class="topbar"></header>
+<div class="shell single">
+  <main>
+    <a class="back" href="/">← Back to feed</a>
+    <section class="card" id="post-card"><div class="empty">Loading…</div></section>
+    <section class="card" id="comments-card" style="margin-top:16px" hidden>
+      <div class="pad" id="comment-form-wrap"></div>
+      <div id="comments"></div>
+    </section>
+  </main>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+(async () => {
+  const me = await initHeader();
+  const id = new URLSearchParams(location.search).get("id");
+  const postCard = document.getElementById("post-card");
+  const commentsEl = document.getElementById("comments");
+  let data;
+
+  try {
+    data = await api(`/posts/${encodeURIComponent(id)}`);
+  } catch (e) {
+    postCard.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+
+  document.getElementById("comments-card").hidden = false;
+  const { post } = data;
+  let comments = data.comments;
+  document.title = `${post.display_name} on Lufi`;
+
+  function renderPost() { postCard.innerHTML = postHtml(post, me, { detail: true }); }
+  renderPost();
+  bindPosts(postCard, me, { onDelete: () => { location.href = "/"; } });
+
+  function commentHtml(c) {
+    const canDelete = me && (me.id === c.user_id || me.id === post.user_id);
+    return `
+      <div class="comment" data-comment="${c.id}">
+        <a href="/profile.html?u=${encodeURIComponent(c.username)}">${avatar(c, "sm")}</a>
+        <div class="post-main">
+          <div class="post-head">
+            <a class="name" href="/profile.html?u=${encodeURIComponent(c.username)}">${esc(c.display_name)}</a>
+            <span class="handle">@${esc(c.username)}</span><span class="sep">·</span><span class="time">${timeAgo(c.created_at)}</span>
+            ${canDelete ? '<button class="link-btn danger" data-del type="button">Delete</button>' : ""}
+          </div>
+          <p class="post-body" style="margin-bottom:0">${esc(c.content)}</p>
+        </div>
+      </div>`;
+  }
+
+  function renderComments() {
+    commentsEl.innerHTML = comments.length
+      ? comments.map(commentHtml).join("")
+      : '<div class="empty" style="border-top:1px solid var(--line)">No replies yet. Start the conversation.</div>';
+  }
+  renderComments();
+
+  const wrap = document.getElementById("comment-form-wrap");
+  if (me) {
+    wrap.innerHTML = `
+      <div class="composer">
+        ${avatar(me, "sm")}
+        <div style="flex:1">
+          <textarea id="c-text" placeholder="Write a reply…" maxlength="400" aria-label="Reply"></textarea>
+          <div class="composer-foot">
+            <span class="counter" id="c-counter">280</span>
+            <button class="btn btn-primary btn-sm" id="c-btn" type="button">Reply</button>
+          </div>
+          <div class="alert" id="c-error" hidden style="margin:10px 0 0"></div>
+        </div>
+      </div>`;
+    const text = document.getElementById("c-text");
+    const btn = document.getElementById("c-btn");
+    const err = document.getElementById("c-error");
+    bindCounter(text, document.getElementById("c-counter"), btn);
+    btn.addEventListener("click", async () => {
+      err.hidden = true;
+      btn.disabled = true;
+      try {
+        const c = await api(`/posts/${post.id}/comments`, { method: "POST", body: JSON.stringify({ content: text.value }) });
+        comments.push(c);
+        post.comment_count += 1;
+        text.value = "";
+        text.dispatchEvent(new Event("input"));
+        renderComments();
+        renderPost();
+      } catch (e) {
+        err.textContent = e.message;
+        err.hidden = false;
+        btn.disabled = false;
+      }
+    });
+  } else {
+    wrap.innerHTML = '<a href="#" id="login-prompt" style="color:var(--violet);font-weight:700">Log in to reply</a>';
+    document.getElementById("login-prompt").addEventListener("click", (e) => { e.preventDefault(); goLogin(); });
+  }
+
+  commentsEl.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-del]");
+    if (!btn) return;
+    const cid = btn.closest(".comment").dataset.comment;
+    if (!confirm("Delete this reply?")) return;
+    try {
+      await api(`/posts/${post.id}/comments/${cid}`, { method: "DELETE" });
+      comments = comments.filter((c) => String(c.id) !== cid);
+      post.comment_count -= 1;
+      renderComments();
+      renderPost();
+    } catch (err) { alert(err.message); }
+  });
+})();
+</script>
+</body></html>
