@@ -17,11 +17,30 @@ Requires Node.js 18+.
 
 ```bash
 npm install
-cp .env.example .env     # set SESSION_SECRET
+Copy-Item .env.example .env  # Windows PowerShell: set SESSION_SECRET in .env
 npm start
 ```
 Open http://localhost:3000. The database (`data.db`) and demo users are created on first run.
 Demo logins: `ada`, `grace`, `linus` — password `password123`.
+
+## Deploy to Railway
+
+Railway is a good fit for this app because it can keep SQLite data on a persistent
+volume. Do not deploy it to a static-only host: posts, accounts, and sessions need
+the server and database to remain available.
+
+1. Push this `social-app` folder to GitHub (the included Dockerfile is detected automatically).
+2. In Railway, create a project from that GitHub repository. If the repository root
+   contains this folder, set the service's **Root Directory** to `social-app`.
+3. In the service's **Variables** tab, add a long, random `SESSION_SECRET` and set
+   `DATA_DIR` to `/app/data`.
+4. In **Settings → Volumes**, add a volume mounted at `/app/data`. This is required
+   to keep `data.db` and `sessions.db` across deploys.
+5. Generate a public domain from **Settings → Networking** and open `/health` to
+   confirm the service responds with `{ "status": "ok" }`.
+
+The app already reads Railway's `PORT` variable. Railway handles HTTPS; production
+sessions are marked secure and the server trusts Railway's proxy.
 
 ## Structure
 ```

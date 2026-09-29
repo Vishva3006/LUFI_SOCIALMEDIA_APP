@@ -1,8 +1,12 @@
 const path = require("path");
+const fs = require("fs");
 const Database = require("better-sqlite3");
 const bcrypt = require("bcryptjs");
 
-const db = new Database(path.join(__dirname, "..", "data.db"));
+const dataDir = process.env.DATA_DIR || path.join(__dirname, "..");
+fs.mkdirSync(dataDir, { recursive: true });
+
+const db = new Database(path.join(dataDir, "data.db"));
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
