@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background gradient: dark blue → purple -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1aff;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#6600cc;stop-opacity:1"/>
+    </linearGradient>
+    <!-- L letter gradient: cyan top → pink/magenta bottom -->
+    <linearGradient id="lGrad" x1="0%" y1="0%" x2="60%" y2="100%">
+      <stop offset="0%" style="stop-color:#00cfff;stop-opacity:1"/>
+      <stop offset="55%" style="stop-color:#7f5fff;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#ff3cac;stop-opacity:1"/>
+    </linearGradient>
+    <!-- People icon gradients -->
+    <linearGradient id="personCenter" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#c0d8ff;stop-opacity:1"/>
+    </linearGradient>
+    <radialGradient id="bgGradRadial" cx="30%" cy="30%" r="80%">
+      <stop offset="0%" style="stop-color:#2233ff;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#5500aa;stop-opacity:1"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="110" ry="110" fill="url(#bgGradRadial)"/>
+
+  <!-- Letter L (thick, bold, rounded) -->
+  <!-- Vertical bar -->
+  <rect x="110" y="80" width="95" height="295" rx="48" ry="48" fill="url(#lGrad)"/>
+  <!-- Horizontal bar (bottom of L) -->
+  <rect x="110" y="330" width="230" height="95" rx="48" ry="48" fill="url(#lGrad)"/>
+
+  <!-- People group (3 figures sitting on the corner of the L) -->
+  <!-- Left person (blue/teal) -->
+  <circle cx="222" cy="198" r="28" fill="#29b6f6"/>
+  <path d="M172 280 Q172 248 222 248 Q272 248 272 280 L272 295 Q222 285 172 295 Z" fill="#29b6f6"/>
+
+  <!-- Right person (purple) -->
+  <circle cx="330" cy="208" r="26" fill="#ab47bc"/>
+  <path d="M282 290 Q282 260 330 260 Q378 260 378 290 L378 305 Q330 295 282 305 Z" fill="#ab47bc"/>
+
+  <!-- Center person (white/light, larger, in front) -->
+  <circle cx="278" cy="185" r="36" fill="url(#personCenter)"/>
+  <path d="M218 292 Q218 250 278 250 Q338 250 338 292 L338 310 Q278 298 218 310 Z" fill="url(#personCenter)"/>
+
+  <!-- "Lufi" text at bottom -->
+  <text
+    x="256"
+    y="462"
+    font-family="'Arial Rounded MT Bold', 'Arial', sans-serif"
+    font-size="88"
+    font-weight="900"
+    text-anchor="middle"
+    fill="#ffffff"
+    letter-spacing="2"
+  >Lufi</text>
+</svg>
