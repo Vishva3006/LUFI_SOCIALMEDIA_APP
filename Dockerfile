@@ -11,6 +11,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
 
+# Cache bust: 2026-09-30
 COPY . .
 
 ENV PORT=3000
